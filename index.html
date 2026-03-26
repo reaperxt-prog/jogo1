@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reefs & Rainforest – Global Game Jam 2026</title>
+  <meta name="description"
+    content="Um jogo sobre o branqueamento dos corais causado pela acidificação dos oceanos. Salve os recifes e a floresta tropical!" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Inter:wght@300;400;600&display=swap"
+    rel="stylesheet" />
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      background: #000814;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+      font-family: 'Inter', sans-serif;
+    }
+
+    canvas {
+      display: block;
+      cursor: crosshair;
+      image-rendering: crisp-edges;
+    }
+  </style>
+</head>
+
+<body>
+  <canvas id="c"></canvas>
+  <script src="game.js"></script>
+</body>
+
+</html>

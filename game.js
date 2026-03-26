@@ -18,7 +18,7 @@ fitCanvas();
 window.addEventListener('resize', fitCanvas);
 
 // ---- CONSTANTS ----
-const STATE = { MENU:0, PLAY:1, PAUSED:2, OVER:3, WIN:4 };
+const STATE = { MENU:0, PLAY:1, PAUSED:2, OVER:3, WIN:4, TUTORIAL:5 };
 const SEA_TOP = H * 0.30;            // y where ocean starts
 const FLOOR_Y = H - 60;             // y of sea floor
 const PH_DANGER = 7.85;
@@ -42,6 +42,75 @@ let comboTimer = 0;
 let shakeAmt   = 0;
 let factText   = '';
 let factTimer  = 0;
+let tutStep    = 0;
+let tutAnim    = 0;
+
+// ---- TUTORIAL DATA ----
+const TUTORIAL_STEPS = [
+  {
+    title: '🌊 BEM-VINDO!',
+    text:  'Este jogo simula a crise real dos recifes de coral.\nA tela é dividida em dois mundos interligados.',
+    spotX: W/2, spotY: H/2, spotR: 420,
+    arrow: null,
+    highlight: 'full',
+  },
+  {
+    title: '🌿 FLORESTA TROPICAL (parte superior)',
+    text:  'As árvores absorvem CO₂ da atmosfera, naturalmente.\nQuando desflorestadas, liberam carbono que acidifica o oceano.',
+    spotX: W/2, spotY: H*0.15, spotR: 200,
+    arrow: { x: W/2, y: H*0.15 - 180, tx: W/2, ty: H*0.09 },
+    highlight: 'top',
+  },
+  {
+    title: '🪸 RECIFES DE CORAL (parte inferior)',
+    text:  'Os corais no fundo do oceano estão vivos e coloridos.\nQuando o pH cai, eles perdem a cor e embranquecem!',
+    spotX: W/2, spotY: FLOOR_Y - 40, spotR: 220,
+    arrow: { x: W/2, y: FLOOR_Y - 220, tx: W/2, ty: FLOOR_Y - 50 },
+    highlight: 'bottom',
+  },
+  {
+    title: '🟢 BOLSÕES DE CO₂',
+    text:  'Bolhas verdes são CO₂ dissolvido na água.\nSe chegarem ao fundo, o pH cai e os corais embranquecem!\n⚠️ IMPEÇA que cheguem ao fundo!',
+    spotX: W/2, spotY: SEA_TOP + 80, spotR: 160,
+    arrow: { x: W/2 + 160, y: SEA_TOP + 30, tx: W/2 + 100, ty: SEA_TOP + 70 },
+    highlight: 'ocean',
+  },
+  {
+    title: '🚢 SEU SUBMARINO',
+    text:  'Você controla o submarino com o MOUSE.\nCLIQUE para disparar projéteis alcalinos (OH⁻)\nque neutralizam os bolsões de CO₂!',
+    spotX: W/2, spotY: H*0.55, spotR: 110,
+    arrow: { x: W/2 + 110, y: H*0.45, tx: W/2 + 40, ty: H*0.53 },
+    highlight: 'ocean',
+  },
+  {
+    title: '💠 ORBS ALCALINOS (OH⁻)',
+    text:  'Orbs azuis flutuam pelo oceano.\nPasse sobre eles para coletá-los — restauram o pH!\nMais pH = corais mais saudáveis.',
+    spotX: W*0.75, spotY: H*0.5, spotR: 100,
+    arrow: { x: W*0.75 + 80, y: H*0.4, tx: W*0.75 + 20, ty: H*0.49 },
+    highlight: 'ocean',
+  },
+  {
+    title: '📊 BARRA DE pH',
+    text:  'Monitore o pH do oceano (deve ficar > 7,9).\nVerde = seguro | Amarelo = alerta | Vermelho = PERIGO!\nA linha tracejada vermelha marca o limite crítico.',
+    spotX: 120, spotY: H*0.31 + 32, spotR: 130,
+    arrow: { x: 300, y: H*0.31 + 32, tx: 220, ty: H*0.31 + 32 },
+    highlight: 'hud',
+  },
+  {
+    title: '🔥 INCÊNDIOS NA FLORESTA',
+    text:  'Árvores pegam fogo aleatoriamente!\nCLIQUE nelas rapidamente para apagar.\nSe não salvas, liberam CO₂ que acidifica ainda mais o oceano.',
+    spotX: W/2, spotY: H*0.14, spotR: 140,
+    arrow: { x: W/2 + 130, y: H*0.06, tx: W/2 + 50, ty: H*0.1 },
+    highlight: 'top',
+  },
+  {
+    title: '🏆 OBJETIVO',
+    text:  'Sobreviva às ondas mantendo:\n🪸 Saúde dos corais > 0%\n🌊 pH do oceano acima de 7,9\n\nComplete 3 níveis × 5 ondas para VENCER!',
+    spotX: W/2, spotY: H/2, spotR: 350,
+    arrow: null,
+    highlight: 'full',
+  },
+];
 
 const FACTS = [
   '🌊 Os oceanos absorvem ~30% do CO₂ humano, tornando-se mais ácidos.',
@@ -68,11 +137,15 @@ const mouse = { x: W/2, y: H/2, down: false, clicked: false };
 window.addEventListener('keydown', e => {
   keys[e.code] = true;
   if (e.code === 'Escape') {
-    if (state === STATE.PLAY)   state = STATE.PAUSED;
+    if (state === STATE.PLAY)        state = STATE.PAUSED;
     else if (state === STATE.PAUSED) state = STATE.PLAY;
+    else if (state === STATE.TUTORIAL) state = STATE.MENU;
   }
-  if (e.code === 'Space' && state === STATE.MENU)  startGame();
-  if (e.code === 'Space' && state === STATE.OVER)  startGame();
+  if (e.code === 'Space' && state === STATE.MENU)     startGame();
+  if (e.code === 'Space' && state === STATE.OVER)     startGame();
+  if (e.code === 'Space' && state === STATE.TUTORIAL) advanceTutorial();
+  if (e.code === 'ArrowRight' && state === STATE.TUTORIAL) advanceTutorial();
+  if (e.code === 'ArrowLeft'  && state === STATE.TUTORIAL) retreatTutorial();
 });
 window.addEventListener('keyup',   e => { keys[e.code] = false; });
 
@@ -826,17 +899,25 @@ function drawMenu() {
   ctx.fillStyle='#546E7A'; ctx.font='14px Inter';
   ctx.fillText('Global Game Jam 2026', W/2, H/2+58);
 
-  // Blink play
+  // Blink play button
   const blink = Math.sin(t*0.08)>0;
   ctx.fillStyle = blink ? '#00E5FF' : '#4DD0E1';
   ctx.font='bold 22px Orbitron'; ctx.textAlign='center';
-  ctx.fillText('▶  CLIQUE OU APERTE ESPAÇO PARA JOGAR', W/2, H/2+110);
+  ctx.fillText('▶  CLIQUE OU APERTE ESPAÇO PARA JOGAR', W/2, H/2+100);
 
-  // Controls panel
-  uiPanel(W/2-260, H/2+140, 520, 80, 'rgba(0,0,0,0.5)');
+  // Tutorial button
+  const txBtn = W/2, tyBtn = H/2+148;
+  uiPanel(txBtn-130, tyBtn-22, 260, 44, 'rgba(0,100,80,0.7)');
+  ctx.strokeStyle='rgba(0,229,180,0.5)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); roundedRect(txBtn-130, tyBtn-22, 260, 44, 8); ctx.stroke();
+  ctx.fillStyle='#69F0AE'; ctx.font='bold 16px Orbitron'; ctx.textAlign='center';
+  ctx.fillText('📖  COMO JOGAR', txBtn, tyBtn+5);
+
+  // Controls quick-ref
+  uiPanel(W/2-260, H/2+205, 520, 56, 'rgba(0,0,0,0.5)');
   ctx.fillStyle='#80CBC4'; ctx.font='13px Inter'; ctx.textAlign='center';
-  ctx.fillText('🖱 Mouse – Mover Submarino    |    Clicar – Disparar OH⁻ nos CO₂', W/2, H/2+165);
-  ctx.fillText('🔥 Clique nas árvores em chamas para salvar a floresta!', W/2, H/2+185);
+  ctx.fillText('🖱 Mouse – Mover Submarino    |    Clicar – Disparar OH⁻ nos CO₂', W/2, H/2+224);
+  ctx.fillText('🔥 Clique nas árvores em chamas para salvar a floresta!', W/2, H/2+242);
 }
 
 function drawPauseScreen() {
@@ -884,6 +965,146 @@ function drawWin() {
   ctx.fillText('CLIQUE para jogar novamente', W/2, H/2+120);
 }
 
+// ---- TUTORIAL LOGIC ----
+function startTutorial() {
+  state   = STATE.TUTORIAL;
+  tutStep = 0;
+  tutAnim = 0;
+  initCorals(); initTrees(); initBG();
+  // pre-place a bubble for demonstration
+  bubbles.length = 0;
+  bubbles.push({ x:W/2, y:SEA_TOP+70, r:14, vy:0, vx:0, str:1, ph:0 });
+  orbs.length = 0;
+  orbs.push({ x:W*0.75, y:H*0.5, r:13, ph:0, vy:0 });
+}
+
+function advanceTutorial() {
+  if (tutStep < TUTORIAL_STEPS.length - 1) {
+    tutStep++; tutAnim = 0;
+    beep(523, 0.08); beep(659, 0.08);
+  } else {
+    state = STATE.MENU;
+    beep(784, 0.15);
+  }
+}
+
+function retreatTutorial() {
+  if (tutStep > 0) { tutStep--; tutAnim = 0; beep(440, 0.08); }
+}
+
+function drawTutorial() {
+  tutAnim++;
+  const step = TUTORIAL_STEPS[tutStep];
+
+  // Draw the game world behind
+  drawBackground();
+  trees.forEach(drawTree);
+  drawBgFish();
+  corals.forEach(drawCoral);
+  drawBubbles();
+  drawOrbs();
+
+  // Dark overlay with spotlight cutout
+  ctx.save();
+  if (step.highlight !== 'full') {
+    // Darken everything
+    ctx.fillStyle = 'rgba(0,0,0,0.72)';
+    ctx.fillRect(0,0,W,H);
+    // Cut spotlight using composite
+    ctx.globalCompositeOperation = 'destination-out';
+    const grad = ctx.createRadialGradient(step.spotX, step.spotY, step.spotR*0.5, step.spotX, step.spotY, step.spotR);
+    grad.addColorStop(0, 'rgba(0,0,0,1)');
+    grad.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(step.spotX, step.spotY, step.spotR, 0, Math.PI*2); ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+  } else {
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(0,0,W,H);
+  }
+  ctx.restore();
+
+  // Spotlight ring pulse
+  if (step.highlight !== 'full') {
+    const pulse = 0.5 + Math.sin(tutAnim*0.06)*0.3;
+    ctx.save(); ctx.globalAlpha = pulse;
+    ctx.strokeStyle='rgba(0,229,255,0.8)'; ctx.lineWidth=3;
+    ctx.setLineDash([8,6]);
+    ctx.beginPath(); ctx.arc(step.spotX, step.spotY, step.spotR, 0, Math.PI*2); ctx.stroke();
+    ctx.setLineDash([]); ctx.restore();
+  }
+
+  // Animated arrow
+  if (step.arrow) {
+    const bounce = Math.sin(tutAnim*0.1) * 10;
+    const ax = step.arrow.x, ay = step.arrow.y + bounce;
+    const tx2 = step.arrow.tx, ty2 = step.arrow.ty;
+    ctx.save();
+    ctx.strokeStyle='#FFD740'; ctx.lineWidth=3;
+    ctx.shadowColor='#FFD740'; ctx.shadowBlur=12;
+    ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(tx2, ty2); ctx.stroke();
+    // Arrowhead
+    const ang = Math.atan2(ty2-ay, tx2-ax);
+    ctx.fillStyle='#FFD740';
+    ctx.beginPath();
+    ctx.moveTo(tx2, ty2);
+    ctx.lineTo(tx2 - Math.cos(ang-0.4)*18, ty2 - Math.sin(ang-0.4)*18);
+    ctx.lineTo(tx2 - Math.cos(ang+0.4)*18, ty2 - Math.sin(ang+0.4)*18);
+    ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
+
+  // Info panel
+  const panW = 700, panH = 200;
+  const panX = W/2 - panW/2;
+  const panY = H - panH - 20;
+
+  // Panel bg
+  ctx.save();
+  ctx.fillStyle='rgba(0,10,30,0.92)';
+  ctx.beginPath(); roundedRect(panX, panY, panW, panH, 14); ctx.fill();
+  ctx.strokeStyle='rgba(0,229,255,0.35)'; ctx.lineWidth=1.5;
+  ctx.beginPath(); roundedRect(panX, panY, panW, panH, 14); ctx.stroke();
+
+  // Step counter dots
+  const dotN = TUTORIAL_STEPS.length;
+  for (let i=0;i<dotN;i++) {
+    ctx.fillStyle = i===tutStep ? '#00E5FF' : 'rgba(255,255,255,0.2)';
+    ctx.beginPath();
+    ctx.arc(panX + panW/2 + (i - dotN/2 + 0.5)*16, panY+16, i===tutStep?5:3, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Title
+  ctx.fillStyle='#00E5FF'; ctx.font='bold 22px Orbitron';
+  ctx.textAlign='center'; ctx.textBaseline='top';
+  ctx.shadowColor='#00E5FF'; ctx.shadowBlur=20;
+  ctx.fillText(step.title, panX+panW/2, panY+28);
+  ctx.shadowBlur=0;
+
+  // Body text (multiline)
+  ctx.fillStyle='#B2DFDB'; ctx.font='15px Inter';
+  const lines = step.text.split('\n');
+  lines.forEach((ln, i) => {
+    ctx.fillText(ln, panX+panW/2, panY+66 + i*24);
+  });
+
+  // Navigation hint
+  ctx.fillStyle='rgba(255,255,255,0.35)'; ctx.font='12px Inter';
+  if (tutStep > 0) ctx.fillText('◀ Voltar', panX+70, panY+panH-20);
+  ctx.fillStyle='rgba(255,255,255,0.55)'; ctx.font='13px Inter';
+  const nextLbl = tutStep < TUTORIAL_STEPS.length-1 ? '▶ PRÓXIMO  (→ ou Espaço)' : '✅ COMEÇAR A JOGAR!';
+  ctx.fillStyle = tutStep === TUTORIAL_STEPS.length-1 ? '#69F0AE' : '#80CBC4';
+  ctx.fillText(nextLbl, panX+panW/2, panY+panH-20);
+
+  ctx.restore();
+
+  // ESC hint top
+  ctx.fillStyle='rgba(200,200,200,0.3)'; ctx.font='11px Inter';
+  ctx.textAlign='center';
+  ctx.fillText('ESC – Voltar ao menu', W/2, 18);
+}
+
 // ---- GAME FLOW ----
 function startGame() {
   state      = STATE.PLAY;
@@ -927,10 +1148,9 @@ function update() {
     tickBgFish(); tickPlayer(); tickBubbles(); tickOrbs();
     tickTrees(); tickCorals(); tickParts(); tickWave();
     mouse.clicked = false;
-  } else if (state === STATE.MENU) {
+  } else if (state === STATE.MENU || state === STATE.TUTORIAL) {
     t += 0.5; frameCnt++;
     tickBgFish(); tickParts();
-    corals.forEach(c => { t; }); // keep animated
   }
   mouse.clicked = false;
 }
@@ -944,6 +1164,12 @@ function draw() {
 
   if (state === STATE.MENU) {
     drawMenu();
+    if (shakeAmt > 0.5) ctx.restore();
+    return;
+  }
+
+  if (state === STATE.TUTORIAL) {
+    drawTutorial();
     if (shakeAmt > 0.5) ctx.restore();
     return;
   }
@@ -966,8 +1192,29 @@ function draw() {
 }
 
 // Click handlers for screens
-canvas.addEventListener('click', () => {
-  if (state === STATE.MENU)  { startGame(); return; }
+canvas.addEventListener('click', e => {
+  const r  = canvas.getBoundingClientRect();
+  const sx = r.width  / W, sy = r.height / H;
+  const cx = (e.clientX - r.left) / sx;
+  const cy = (e.clientY - r.top)  / sy;
+
+  if (state === STATE.MENU) {
+    // Check tutorial button click (approx region)
+    if (cx > W/2-130 && cx < W/2+130 && cy > H/2+126 && cy < H/2+170) {
+      startTutorial(); return;
+    }
+    startGame(); return;
+  }
+  if (state === STATE.TUTORIAL) {
+    const step   = TUTORIAL_STEPS[tutStep];
+    const panX   = W/2 - 350;
+    const panY   = H - 220;
+    // Back arrow hit test
+    if (tutStep > 0 && cx > panX && cx < panX+120 && cy > panY+180 && cy < panY+220) {
+      retreatTutorial(); return;
+    }
+    advanceTutorial(); return;
+  }
   if (state === STATE.OVER)  { startGame(); return; }
   if (state === STATE.WIN)   { startGame(); return; }
 });
